@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Route Builder</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css"
+    />
+    <style>
+        #map {
+            height: 500px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+<span id="statusText" style="margin: 10px; text-align: center; display: block; width: 100%">You have to define route first: click on starting point and on the ending one</span>
+<div style="margin: 10px; text-align: center;">
+    <button id="actionButton">Awaiting updates</button>
+</div>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.min.js"></script>
+
+<script>
+    const map = L.map('map').setView([44.98204229951465, 13.77410888671875], 13); // Default location
+    const marker = L.marker({lat: 0, lng: 0}).addTo(map);
+
+    const eventSrc = new EventSource("/events");
+    const statusText = document.getElementById("statusText");
+    const actionButton = document.getElementById("actionButton");
+
+    actionButton.addEventListener("click", () => {
+        actionButton.textContent = "Awaiting updates";
+        fetch('/route/run', {
+            method: 'GET',
+        }).catch((error) => {
+            console.error('Error:', error);
+        });
+    });
+
+    eventSrc.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        marker.setLatLng({lat: data.lat, lng: data.lon});
+        if (data.status === "Running") {
+            actionButton.textContent = "Pause simulation";
+        } else if (data.status === "Paused") {
+            actionButton.textContent = "Run simulation";
+        }
+    };
+    eventSrc.onerror = (event) => {
+        console.error("EventSource failed:", event);
+    };
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    let waypoints = [];
+
+    const routingControl = L.Routing.control({
+        waypoints: [],
+        routeWhileDragging: false,
+        show: false,
+        addWaypoints: false,
+        createMarker: () => null, // no default markers
+    }).addTo(map);
+
+    map.on('click', function(e) {
+        if (waypoints.length < 2) {
+            waypoints.push(e.latlng);
+            if (waypoints.length === 2) {
+                routingControl.setWaypoints(waypoints);
+            }
+        }
+
+        if (waypoints.length === 1) {
+            statusText.textContent = "Great, now click on the ending point";
+        } else if (waypoints.length === 2) {
+            statusText.textContent = "Route defined";
+        }
+
+    });
+
+    routingControl.on('routesfound', function(e) {
+        console.log("Route", e.routes[0])
+
+        statusText.textContent = `${e.routes[0].name}. Total distance: ${e.routes[0].summary.totalDistance} meters`;
+
+        fetch('/route', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                name: e.routes[0].name,
+                coordinates: e.routes[0].coordinates,
+            }),
+        }).catch((error) => {
+            console.error('Error:', error);
+        });
+    });
+</script>
+</body>
+</html>
