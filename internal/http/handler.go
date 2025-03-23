@@ -31,12 +31,12 @@ func (r *routeRequest) ToPoints() []route.Point {
 func (s *Server) indexHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	if _, err := w.Write(indexFile); err != nil {
-		s.log.Error("error writing index.html: ", err)
+		s.log.Error("HTTP: error writing index.html: ", err)
 	}
 }
 
 func (s *Server) sseHandler(w http.ResponseWriter, r *http.Request) {
-	s.log.Info("SSE client connected")
+	s.log.Info("HTTP: SSE client connected")
 	// Set http headers required for SSE
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -57,7 +57,7 @@ func (s *Server) sseHandler(w http.ResponseWriter, r *http.Request) {
 		case <-s.ctx.Done():
 			return
 		case <-clientGone:
-			s.log.Info("SSE client disconnected")
+			s.log.Info("HTTP: SSE client disconnected")
 			return
 		case update := <-updates:
 			s.routeCtrl.GetState()

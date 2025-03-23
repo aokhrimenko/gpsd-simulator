@@ -15,7 +15,7 @@ const (
 
 	WatchCommand = `?WATCH=`
 
-	TpvTemplate   = "{\"class\": \"TPV\", \"device\": \"/dev/ttyUSB1\", \"mode\": 3, \"time\": \"%s\", \"ept\": 0.005, \"lat\": %f, \"lon\": %f, \"alt\": %0.f, \"epv\": 18.400, \"track\": 186.1000, \"speed\": %.3f, \"climb\": 0.000, \"epc\": 36.80}\n"
+	TpvTemplate   = "{\"class\": \"TPV\", \"device\": \"/dev/ttyUSB1\", \"mode\": 3, \"time\": \"%s\", \"lat\": %f, \"lon\": %f, \"alt\": %3.f, \"track\": %.3f, \"speed\": %.3f}\n"
 	CommandSuffix = ';'
 )
 
@@ -23,7 +23,7 @@ func WriteTPVReport(w io.Writer, point route.Point) error {
 	now := time.Now().UTC()
 	formattedTime := now.Format("2006-01-02T15:04:05.000Z")
 
-	tpvString := fmt.Sprintf(TpvTemplate, formattedTime, point.Lat, point.Lon, point.Elevation, point.Speed)
+	tpvString := fmt.Sprintf(TpvTemplate, formattedTime, point.Lat, point.Lon, point.Elevation, point.Track, point.Speed)
 	_, err := w.Write([]byte(tpvString))
 	return err
 }

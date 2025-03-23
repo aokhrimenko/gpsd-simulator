@@ -41,13 +41,13 @@ type Server struct {
 }
 
 func (s *Server) Startup() error {
-	s.log.Infof("starting http server on %s", s.srv.Addr)
+	s.log.Infof("HTTP: starting up server on %s", s.srv.Addr)
 
 	return s.srv.ListenAndServe()
 }
 
 func (s *Server) Shutdown() {
-	s.log.Info("shutting down http server")
+	s.log.Info("HTTP: shutting down server")
 	s.cancel()
 	_ = s.srv.Shutdown(s.ctx)
 }

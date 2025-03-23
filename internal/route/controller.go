@@ -2,11 +2,51 @@ package route
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/aokhrimenko/gpsd-simulator/internal/logger"
 )
+
+type State uint8
+
+func (s State) String() string {
+	switch s {
+	case Paused:
+		return "Paused"
+	case Running:
+		return "Running"
+	default:
+		return "Unknown"
+	}
+}
+
+const (
+	Paused State = iota
+	Running
+)
+
+type Point struct {
+	Lat       float64
+	Lon       float64
+	Speed     float64
+	Elevation float64
+	Track     float64
+}
+
+func (p Point) String() string {
+	return fmt.Sprintf("%f,%f", p.Lat, p.Lon)
+}
+
+type Route struct {
+	Points []Point
+	State  State
+}
+
+func (r *Route) String() string {
+	return fmt.Sprintf("Route with %d points from %f,%f to %f,%f is currently %s", len(r.Points), r.Points[0].Lat, r.Points[0].Lon, r.Points[len(r.Points)-1].Lat, r.Points[len(r.Points)-1].Lon, r.State)
+}
 
 type Controller struct {
 	route      *Route
@@ -41,12 +81,24 @@ func (c *Controller) UpdatePoints(points []Point) {
 
 	c.route.Points = make([]Point, len(points))
 	for i, point := range points {
-		c.route.Points[i] = Point{Lat: point.Lat, Lon: point.Lon, Speed: 15}
+		var speed float64
+		if i > 0 {
+			speed = calculateSpeedMetersPerSecond(points[i-1].Lat, points[i-1].Lon, point.Lat, point.Lon, c.stepDelay)
+		}
+
+		var track float64
+		if i > 0 {
+			track = calculateInitialBearing(points[i-1].Lat, points[i-1].Lon, point.Lat, point.Lon)
+		}
+
+		c.route.Points[i] = Point{Lat: point.Lat, Lon: point.Lon, Speed: speed, Track: track}
 	}
 
 	if err := c.updateRouteElevations(c.route); err != nil {
-		c.log.Error("error updating route elevations: ", err)
+		c.log.Error("Route: error updating route elevations: ", err)
 	}
+
+	c.log.Infof("Route: updated route with %d points", len(c.route.Points))
 }
 
 func (c *Controller) ToggleState() {
@@ -54,8 +106,10 @@ func (c *Controller) ToggleState() {
 	defer c.mu.Unlock()
 	if c.route.State == Running {
 		c.route.State = Paused
+		c.log.Infof("Route: paused")
 	} else {
 		c.route.State = Running
+		c.log.Infof("Route: running")
 	}
 }
 
@@ -85,7 +139,7 @@ func (c *Controller) GetState() State {
 }
 
 func (c *Controller) Shutdown() {
-	c.log.Info("shutting down route controller")
+	c.log.Info("Route: shutting down the controller")
 	c.cancelFunc()
 }
 
@@ -103,7 +157,7 @@ func (c *Controller) loop() {
 		for i := 0; i < len(c.route.Points); i++ {
 			select {
 			case <-c.ctx.Done():
-				c.log.Infof("route controller loop stopped")
+				c.log.Infof("Route: the controller loop stopped")
 				return
 			case <-stepTimer.C:
 			}

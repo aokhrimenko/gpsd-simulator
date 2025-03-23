@@ -18,9 +18,9 @@ type openElevationRequest struct {
 
 type openElevationResponse struct {
 	Results []struct {
+		Latitude  float64 `json:"latitude"`
 		Longitude float64 `json:"longitude"`
 		Elevation float64 `json:"elevation"`
-		Latitude  float64 `json:"latitude"`
 	} `json:"results"`
 }
 

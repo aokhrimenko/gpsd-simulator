@@ -18,7 +18,7 @@
 
 <span id="statusText" style="margin: 10px; text-align: center; display: block; width: 100%">You have to define route first: click on starting point and on the ending one</span>
 <div style="margin: 10px; text-align: center;">
-    <button id="actionButton">Awaiting updates</button>
+    <button id="actionButton" style="min-width: 150px; padding: 10px 20px; background-color: rgba(53,78,225,0.87); color: white; border: none; border-radius: 5px; cursor: pointer; box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);"></button>
 </div>
 <div id="map"></div>
 
@@ -26,15 +26,23 @@
 <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.min.js"></script>
 
 <script>
-    const map = L.map('map').setView([44.98204229951465, 13.77410888671875], 13); // Default location
+    const map = L.map('map').setView([47.37769, 8.54151], 13); // Default location in Zürich
     const marker = L.marker({lat: 0, lng: 0}).addTo(map);
 
     const eventSrc = new EventSource("/events");
     const statusText = document.getElementById("statusText");
     const actionButton = document.getElementById("actionButton");
 
+    const textAwaitingUpdates = "Awaiting updates";
+    const textPauseSimulation = "Pause simulation";
+    const textRunSimulation = "Run simulation";
+    actionButton.textContent = textAwaitingUpdates;
+
     actionButton.addEventListener("click", () => {
-        actionButton.textContent = "Awaiting updates";
+        if (actionButton.textContent === textAwaitingUpdates) {
+            return
+        }
+        actionButton.textContent = textAwaitingUpdates;
         fetch('/route/run', {
             method: 'GET',
         }).catch((error) => {
@@ -46,9 +54,9 @@
         const data = JSON.parse(event.data);
         marker.setLatLng({lat: data.lat, lng: data.lon});
         if (data.status === "Running") {
-            actionButton.textContent = "Pause simulation";
+            actionButton.textContent = textPauseSimulation;
         } else if (data.status === "Paused") {
-            actionButton.textContent = "Run simulation";
+            actionButton.textContent = textRunSimulation;
         }
     };
     eventSrc.onerror = (event) => {
@@ -86,9 +94,11 @@
     });
 
     routingControl.on('routesfound', function(e) {
-        console.log("Route", e.routes[0])
-
-        statusText.textContent = `${e.routes[0].name}. Total distance: ${e.routes[0].summary.totalDistance} meters`;
+        var statusTextValue = `Total distance: ${e.routes[0].summary.totalDistance} meters`;
+        if (e.routes[0].name !== "") {
+            statusTextValue = `${e.routes[0].name}. ${statusTextValue}`;
+        }
+        statusText.textContent = statusTextValue;
 
         fetch('/route', {
             method: 'POST',
