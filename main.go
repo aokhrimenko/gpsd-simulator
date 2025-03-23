@@ -13,8 +13,11 @@ import (
 	"github.com/aokhrimenko/gpsd-simulator/internal/route"
 )
 
+var Version = "dev-version"
+
 func main() {
 	log := logger.NewStdoutLogger()
+	log.Infof("GPSD Simulator %s", Version)
 	mainCtx, mainCancel := context.WithCancel(context.Background())
 	defer mainCancel()
 	signalCtx, signalCancel := signal.NotifyContext(mainCtx, os.Interrupt, syscall.SIGTERM)
