@@ -13,6 +13,8 @@ If you then click on the "Pause simulation" button, the simulation will be pause
 the latest point, but with speed set to zero. When you click on the "Run simulation" button again, the simulation will continue
 from the last point.
 
+![Demo](docs/demo.gif)
+
 ## Features
 
 ### Web interface
