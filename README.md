@@ -37,7 +37,21 @@ TPV report:
 
 ## Installation
 
-TBD
+Download the latest [releases](https://github.com/aokhrimenko/gpsd-simulator/releases) for your platform.
+Under the MacOsX before run the binary you have to remove the quarantine attribute:
+```shell
+xattr -d com.apple.quarantine gpsd-simulator
+```
+
+## Usage
+```shell
+gpsd-simulator <gpsd port> <http port>
+```
+- gpsd port - port for gpsd-simulator server
+- http port - port for the HTTP server of the UI
+
+After running the application, open the browser and navigate to the `http://localhost:<http port>` to open the UI.
+Also, don't forget to point your application which is intended to work with gpsd to the `localhost:<gpsd port>`.
 
 ## Credits
 
