@@ -19,3 +19,8 @@ builds:
       - -X main.Version={{.Tag}}
 checksum:
   name_template: 'checksums.txt'
+archives:
+  - name_template: "gpsd-simulator_{{ .Os }}_{{ .Arch }}"
+    format: tar.gz
+    files:
+      - ./dist/gpsd-simulator
