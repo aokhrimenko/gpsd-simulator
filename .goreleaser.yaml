@@ -20,5 +20,5 @@ builds:
 checksum:
   name_template: 'checksums.txt'
 archives:
-  - name_template: "gpsd-simulator_{{ .Os }}_{{ .Arch }}"
+  - name_template: `{{ .Binary }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}{{ with .Mips }}_{{ . }}{{ end }}{{ if not (eq .Amd64 "v1") }}{{ .Amd64 }}{{ end }}`
     formats: [tar.gz]
