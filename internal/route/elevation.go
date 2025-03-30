@@ -8,6 +8,8 @@ import (
 	"net/http"
 )
 
+const maxPointsInElevationRequest = 20_000
+
 type openElevationRequestLocation struct {
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
@@ -25,45 +27,72 @@ type openElevationResponse struct {
 }
 
 func (c *Controller) updateRouteElevations(route *Route) error {
-	request := openElevationRequest{Locations: make([]openElevationRequestLocation, len(route.Points))}
-	for i, point := range route.Points {
-		request.Locations[i] = openElevationRequestLocation{Latitude: point.Lat, Longitude: point.Lon}
-	}
-
-	jsonData, err := json.Marshal(request)
-	if err != nil {
-		return err
-	}
-
+	totalPoints := len(route.Points)
 	client := &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
 	}
-	resp, err := client.Post("https://api.open-elevation.com/api/v1/lookup", "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to get elevation data: %s", resp.Status)
-	}
+	// Process points in batches
+	for offset := 0; offset < totalPoints; offset += maxPointsInElevationRequest {
+		// Calculate end index for current batch
+		end := offset + maxPointsInElevationRequest
+		if end > totalPoints {
+			end = totalPoints
+		}
 
-	var response openElevationResponse
-	if err = json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return err
-	}
+		// Create request for current batch
+		batchSize := end - offset
+		request := openElevationRequest{
+			Locations: make([]openElevationRequestLocation, batchSize),
+		}
 
-	if len(response.Results) != len(route.Points) {
-		return fmt.Errorf("unexpected number of results: %d", len(response.Results))
-	}
+		// Fill request with batch points
+		for i := 0; i < batchSize; i++ {
+			point := route.Points[offset+i]
+			request.Locations[i] = openElevationRequestLocation{
+				Latitude:  point.Lat,
+				Longitude: point.Lon,
+			}
+		}
 
-	for _, responseResult := range response.Results {
-		for i, point := range route.Points {
-			if point.Lat == responseResult.Latitude && point.Lon == responseResult.Longitude {
-				route.Points[i].Elevation = responseResult.Elevation
-				break
+		jsonData, err := json.Marshal(request)
+		if err != nil {
+			return err
+		}
+
+		c.log.Debugf("Route: making elevation request for %d points (batch %d/%d) of %d bytes",
+			len(request.Locations), offset/maxPointsInElevationRequest+1,
+			(totalPoints+maxPointsInElevationRequest-1)/maxPointsInElevationRequest, len(jsonData))
+
+		resp, err := client.Post("https://api.open-elevation.com/api/v1/lookup", "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("failed to get elevation data: %s", resp.Status)
+		}
+
+		var response openElevationResponse
+		if err = json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			return err
+		}
+
+		if len(response.Results) != batchSize {
+			return fmt.Errorf("unexpected number of results: %d, expected %d", len(response.Results), batchSize)
+		}
+
+		// Update route points with elevation data
+		for _, responseResult := range response.Results {
+			for i := offset; i < end; i++ {
+				point := route.Points[i]
+				if point.Lat == responseResult.Latitude && point.Lon == responseResult.Longitude {
+					route.Points[i].Elevation = responseResult.Elevation
+					break
+				}
 			}
 		}
 	}

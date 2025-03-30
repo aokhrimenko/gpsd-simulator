@@ -77,6 +77,7 @@
         createMarker: () => null, // no default markers
     }).addTo(map);
 
+    let routeDefined = false;
     map.on('click', function(e) {
         if (waypoints.length < 2) {
             waypoints.push(e.latlng);
@@ -87,14 +88,23 @@
 
         if (waypoints.length === 1) {
             statusText.textContent = "Great, now click on the ending point";
-        } else if (waypoints.length === 2) {
-            statusText.textContent = "Route defined";
+        } else if (waypoints.length === 2 && !routeDefined) {
+            statusText.textContent = "Route defined - calculating points...";
+            routeDefined = true;
         }
 
     });
 
     routingControl.on('routesfound', function(e) {
-        var statusTextValue = `Total distance: ${e.routes[0].summary.totalDistance} meters`;
+        const totalDistance = e.routes[0].summary.totalDistance;
+        // if total distance is more than 10 km, convert the distance to kilometers
+        let totalDistanceString = "";
+        if (totalDistance > 10000) {
+            totalDistanceString = (totalDistance / 1000).toFixed(2) + 'km';
+        } else {
+            totalDistanceString = totalDistance.toFixed(2) + 'm';
+        }
+        var statusTextValue = `Total distance: ${totalDistanceString}`;
         if (e.routes[0].name !== "") {
             statusTextValue = `${e.routes[0].name}. ${statusTextValue}`;
         }
