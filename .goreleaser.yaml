@@ -23,4 +23,5 @@ archives:
   - name_template: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}{{ with .Mips }}_{{ . }}{{ end }}{{ if not (eq .Amd64 \"v1\") }}{{ .Amd64 }}{{ end }}"
     formats: [tar.gz]
     wrap_in_directory: false
-    files: "{{ .Binary }}"
+    files:
+      - "{{ .Binary }}"
