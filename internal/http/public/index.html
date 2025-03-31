@@ -3,27 +3,29 @@
 <head>
     <meta charset="utf-8">
     <title>Route Builder</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css"
-    />
+    <link rel="stylesheet" href="/leaflet-1.9.4.css"/>
+    <link rel="stylesheet" href="/leaflet-routing-machine-3.2.12.css"/>
     <style>
         #map {
-            height: 500px;
+            overflow: hidden;
+            position: absolute;
+            top: 85px;
+            bottom: 0;
             width: 100%;
         }
     </style>
 </head>
 <body>
 
-<span id="statusText" style="margin: 10px; text-align: center; display: block; width: 100%">You have to define route first: click on starting point and on the ending one</span>
+<span id="statusText" style="margin: 10px; text-align: center; display: block; width: 100%"></span>
 <div style="margin: 10px; text-align: center;">
     <button id="actionButton" style="min-width: 150px; padding: 10px 20px; background-color: rgba(53,78,225,0.87); color: white; border: none; border-radius: 5px; cursor: pointer; box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);"></button>
+    <button id="stopButton" style="display: none; min-width: 150px; padding: 10px 20px; background-color: rgba(217,12,88,0.87); color: white; border: none; border-radius: 5px; cursor: pointer; box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);">Stop and delete the route</button>
 </div>
 <div id="map"></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.min.js"></script>
+<script src="/leaflet-1.9.4.js"></script>
+<script src="/leaflet-routing-machine-3.2.12.js"></script>
 
 <script>
     const map = L.map('map').setView([47.37769, 8.54151], 13); // Default location in Zürich
@@ -32,11 +34,20 @@
     const eventSrc = new EventSource("/events");
     const statusText = document.getElementById("statusText");
     const actionButton = document.getElementById("actionButton");
+    const stopButton = document.getElementById("stopButton");
 
     const textAwaitingUpdates = "Awaiting updates";
     const textPauseSimulation = "Pause simulation";
     const textRunSimulation = "Run simulation";
     actionButton.textContent = textAwaitingUpdates;
+
+    const statusTextDefault = "You have to define route first: click on starting point and on the ending one";
+    const statusTextRouteStartDefined = "Great, now click on the ending point";
+    const statusTextRouteDefined = "Route defined - calculating points...";
+    const statusTextPreviousRouteRunning = "Previous route is running";
+    statusText.textContent = statusTextDefault;
+
+    let waypoints = [];
 
     actionButton.addEventListener("click", () => {
         if (actionButton.textContent === textAwaitingUpdates) {
@@ -50,11 +61,30 @@
         });
     });
 
+    stopButton.addEventListener("click", () => {
+        fetch('/route/stop', {
+            method: 'GET',
+        }).then(() => {
+            stopButton.style.display = "none";
+            actionButton.textContent = textAwaitingUpdates;
+            statusText.textContent = statusTextDefault;
+            waypoints = [];
+        }).catch((error) => {
+            console.error('Error:', error);
+        });
+    });
+
     eventSrc.onmessage = (event) => {
         const data = JSON.parse(event.data);
         marker.setLatLng({lat: data.lat, lng: data.lon});
         if (data.status === "Running") {
             actionButton.textContent = textPauseSimulation;
+            if (statusText.textContent === statusTextDefault) {
+                statusText.textContent = statusTextPreviousRouteRunning;
+            }
+            // if (stopButton.style.display === "none") {
+            //     stopButton.style.display = "inline-block";
+            // }
         } else if (data.status === "Paused") {
             actionButton.textContent = textRunSimulation;
         }
@@ -67,18 +97,16 @@
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    let waypoints = [];
-
     const routingControl = L.Routing.control({
         waypoints: [],
         routeWhileDragging: false,
         show: false,
         addWaypoints: false,
-        createMarker: () => null, // no default markers
+        // createMarker: () => null, // no default markers
     }).addTo(map);
 
     let routeDefined = false;
-    map.on('click', function(e) {
+    map.on('click', function (e) {
         if (waypoints.length < 2) {
             waypoints.push(e.latlng);
             if (waypoints.length === 2) {
@@ -87,15 +115,15 @@
         }
 
         if (waypoints.length === 1) {
-            statusText.textContent = "Great, now click on the ending point";
+            statusText.textContent = statusTextRouteStartDefined;
         } else if (waypoints.length === 2 && !routeDefined) {
-            statusText.textContent = "Route defined - calculating points...";
+            statusText.textContent = statusTextRouteDefined;
             routeDefined = true;
         }
 
     });
 
-    routingControl.on('routesfound', function(e) {
+    routingControl.on('routesfound', function (e) {
         const totalDistance = e.routes[0].summary.totalDistance;
         // if total distance is more than 10 km, convert the distance to kilometers
         let totalDistanceString = "";

@@ -23,10 +23,11 @@ func NewServer(ctx context.Context, port string, log logger.Logger, routeCtrl *r
 		Handler: mux,
 	}
 
-	mux.HandleFunc("/", server.indexHandler)
 	mux.HandleFunc("POST /route", server.saveRoute)
 	mux.HandleFunc("/route/run", server.runHandler)
+	mux.HandleFunc("/route/stop", server.stopHandler)
 	mux.HandleFunc("/events", server.sseHandler)
+	mux.Handle("/", server.publicHandler())
 
 	return server, nil
 }

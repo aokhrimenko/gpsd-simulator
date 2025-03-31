@@ -1,16 +1,22 @@
 package http
 
 import (
+	"embed"
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
+	"log"
 	"net/http"
 
 	"github.com/aokhrimenko/gpsd-simulator/internal/route"
 )
 
-//go:embed index.html
+//go:embed public/index.html
 var indexFile []byte
+
+//go:embed public
+var staticFiles embed.FS
 
 type routeRequest struct {
 	Name        string `json:"name"`
@@ -33,6 +39,15 @@ func (s *Server) indexHandler(w http.ResponseWriter, _ *http.Request) {
 	if _, err := w.Write(indexFile); err != nil {
 		s.log.Error("HTTP: error writing index.html: ", err)
 	}
+}
+
+func (s *Server) publicHandler() http.Handler {
+	var staticFS = fs.FS(staticFiles)
+	htmlContent, err := fs.Sub(staticFS, "public")
+	if err != nil {
+		log.Fatal(err)
+	}
+	return http.FileServerFS(htmlContent)
 }
 
 func (s *Server) sseHandler(w http.ResponseWriter, r *http.Request) {
@@ -77,6 +92,11 @@ func (s *Server) sseHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) runHandler(w http.ResponseWriter, _ *http.Request) {
 	s.routeCtrl.ToggleState()
+	w.WriteHeader(http.StatusAccepted)
+}
+
+func (s *Server) stopHandler(w http.ResponseWriter, _ *http.Request) {
+	s.routeCtrl.UpdatePoints([]route.Point{})
 	w.WriteHeader(http.StatusAccepted)
 }
 

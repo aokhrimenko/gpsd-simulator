@@ -106,6 +106,12 @@ func (c *Controller) UpdatePoints(points []Point) {
 		c.log.Error("Route: error updating route elevations: ", err)
 	}
 
+	if len(c.route.Points) > 0 {
+		c.route.State = Running
+	} else {
+		c.route.State = Paused
+	}
+
 	c.log.Infof("Route: updated route with %d points", len(c.route.Points))
 }
 

@@ -28,6 +28,9 @@ type openElevationResponse struct {
 
 func (c *Controller) updateRouteElevations(route *Route) error {
 	totalPoints := len(route.Points)
+	if totalPoints == 0 {
+		return nil
+	}
 	client := &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
