@@ -1,9 +1,19 @@
 package logger
 
+type Level int
+
+const (
+	LevelFatal Level = iota
+	LevelError
+	LevelWarn // 2
+	LevelInfo
+	LevelDebug
+)
+
 type Logger interface {
 	Debugf(format string, args ...interface{})
-	Infof(format string, args ...interface{})
 	Debug(args ...interface{})
+	Infof(format string, args ...interface{})
 	Info(args ...interface{})
 	Warnf(format string, args ...interface{})
 	Warn(args ...interface{})
@@ -11,4 +21,10 @@ type Logger interface {
 	Error(args ...interface{})
 	Fatalf(format string, args ...interface{})
 	Fatal(args ...interface{})
+	Rawf(format string, args ...interface{})
+	Raw(args ...interface{})
+}
+
+func shouldLog(level Level, maxLevel Level) bool {
+	return level > maxLevel
 }

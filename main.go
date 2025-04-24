@@ -11,12 +11,13 @@ import (
 	"github.com/aokhrimenko/gpsd-simulator/internal/http"
 	"github.com/aokhrimenko/gpsd-simulator/internal/logger"
 	"github.com/aokhrimenko/gpsd-simulator/internal/route"
+	"github.com/aokhrimenko/gpsd-simulator/internal/version"
 )
 
 var Version = "dev-version"
 
 func main() {
-	log := logger.NewStdoutLogger()
+	log := logger.NewStdoutLogger(logger.LevelDebug)
 	log.Infof("GPSD Simulator %s", Version)
 	mainCtx, mainCancel := context.WithCancel(context.Background())
 	defer mainCancel()
@@ -27,6 +28,8 @@ func main() {
 		log.Fatal("Usage: gpsd-simulator <gpsd port> <http port>")
 		return
 	}
+
+	go version.CheckForUpdate(mainCtx, log, Version)
 
 	routeCtrl := route.NewController(mainCtx, time.Second, log)
 	defer routeCtrl.Shutdown()
