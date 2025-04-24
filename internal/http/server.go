@@ -42,7 +42,7 @@ type Server struct {
 }
 
 func (s *Server) Startup() error {
-	s.log.Infof("HTTP: starting up server on %s", s.srv.Addr)
+	s.log.Infof("HTTP: starting up server on http://localhost%s/", s.srv.Addr)
 
 	return s.srv.ListenAndServe()
 }
