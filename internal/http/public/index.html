@@ -100,6 +100,7 @@
                 }
 
                 statusText.textContent = formatRouteName(message.name, message.distance)
+                maxSpeedInput.value = message.maxSpeed || 0;
 
                 if (message.points && message.points.length > 0) {
                     // Convert points to LatLng format
@@ -225,7 +226,7 @@
     });
 
     function formatRouteName(name, distance) {
-        let distanceString = "";
+        let distanceString;
         if (distance > 10000) {
             distanceString = (distance / 1000).toFixed(2) + 'km';
         } else {

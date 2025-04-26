@@ -55,6 +55,7 @@ type sseMessageInitialRoute struct {
 	Type     string        `json:"type"`
 	Name     string        `json:"name"`
 	Distance float64       `json:"distance"`
+	MaxSpeed uint          `json:"maxSpeed"`
 	Points   []route.Point `json:"points"`
 }
 
@@ -86,12 +87,12 @@ func (s *Server) sseHandler(w http.ResponseWriter, r *http.Request) {
 	if s.routeCtrl.GetRouteSize() > 0 {
 		// send the initial route to the client
 		err := func() error {
-			initialRouteMessage := sseMessageInitialRoute{}
+			initialRouteMessage := sseMessageInitialRoute{Type: "initial-route"}
 			currentRoute := s.routeCtrl.GetRoute()
 			initialRouteMessage.Name = currentRoute.Name
 			initialRouteMessage.Distance = currentRoute.Distance
 			initialRouteMessage.Points = currentRoute.Points
-			initialRouteMessage.Type = "initial-route"
+			initialRouteMessage.MaxSpeed = currentRoute.MaxSpeed
 			_, err := w.Write([]byte("data: "))
 			if err != nil {
 				return err
