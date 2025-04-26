@@ -47,13 +47,20 @@ xattr -d com.apple.quarantine gpsd-simulator
 
 ## Usage
 ```shell
-gpsd-simulator <gpsd port> <http port>
+gpsd-simulator
 ```
 - gpsd port - port for gpsd-simulator server
 - http port - port for the HTTP server of the UI
 
-After running the application, open the browser and navigate to the `http://localhost:<http port>` to open the UI.
-Also, don't forget to point your application which is intended to work with gpsd to the `localhost:<gpsd port>`.
+After running the application, open the browser and navigate to the `http://localhost:8881` to open the UI.
+Also, don't forget to point your application which is intended to work with gpsd to the `localhost:2947`.
+
+Default ports could be changed with command line arguments:
+```shell
+gpsd-simulator --gpsd-port 2947 --webui-port 8881
+```
+
+Additional debug information could be enabled with the `-d` flag, or even more debug information with `-v` flag.
 
 ## Credits
 
