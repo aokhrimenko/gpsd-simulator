@@ -9,7 +9,7 @@
         #map {
             overflow: hidden;
             position: absolute;
-            top: 85px;
+            top: 95px;
             bottom: 0;
             width: 100%;
         }
@@ -18,7 +18,8 @@
 <body>
 
 <span id="statusText" style="margin: 10px; text-align: center; display: block; width: 100%"></span>
-<div style="margin: 10px; text-align: center;">
+<div style="text-align: center;">
+    <label for="maxSpeedInput">Speed Limit for the new route, km/h</label><input id="maxSpeedInput" type="number" min="0" max="200" value="0" style="min-width: 50px; padding: 10px; width: 50px; margin: 10px; border: 1px solid #ccc; border-radius: 5px; box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);">
     <button id="actionButton" style="min-width: 150px; padding: 10px 20px; background-color: rgba(53,78,225,0.87); color: white; border: none; border-radius: 5px; cursor: pointer; box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);"></button>
     <button id="stopButton" style="display: none; min-width: 150px; padding: 10px 20px; background-color: rgba(217,12,88,0.87); color: white; border: none; border-radius: 5px; cursor: pointer; box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);">Stop and delete the route</button>
 </div>
@@ -30,11 +31,13 @@
 <script>
     const map = L.map('map').setView([47.37769, 8.54151], 13); // Default location in Zürich
     const marker = L.marker({lat: 0, lng: 0}).addTo(map);
+    let routePolyline = null;
 
     const eventSrc = new EventSource("/events");
     const statusText = document.getElementById("statusText");
     const actionButton = document.getElementById("actionButton");
     const stopButton = document.getElementById("stopButton");
+    const maxSpeedInput = document.getElementById("maxSpeedInput");
 
     const textAwaitingUpdates = "Awaiting updates";
     const textPauseSimulation = "Pause simulation";
@@ -69,26 +72,105 @@
             actionButton.textContent = textAwaitingUpdates;
             statusText.textContent = statusTextDefault;
             waypoints = [];
+            if (routePolyline) {
+                map.removeLayer(routePolyline);
+                routePolyline = null;
+            }
+            routingControl._clearLines()
+            marker.setLatLng({lat: 0, lng: 0})
         }).catch((error) => {
             console.error('Error:', error);
         });
     });
 
     eventSrc.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        marker.setLatLng({lat: data.lat, lng: data.lon});
-        if (data.status === "Running") {
-            actionButton.textContent = textPauseSimulation;
-            if (statusText.textContent === statusTextDefault) {
-                statusText.textContent = statusTextPreviousRouteRunning;
-            }
-            // if (stopButton.style.display === "none") {
-            //     stopButton.style.display = "inline-block";
-            // }
-        } else if (data.status === "Paused") {
-            actionButton.textContent = textRunSimulation;
+        const message = JSON.parse(event.data);
+
+        if (typeof message.type === "undefined") {
+            console.error("EventSource data type is undefined:", message);
+            return
+        }
+
+        switch (message.type) {
+            case "initial-route":
+                console.log("Initial route:", message);
+                // Remove previous route if exists
+                if (routePolyline) {
+                    map.removeLayer(routePolyline);
+                }
+
+                statusText.textContent = formatRouteName(message.name, message.distance)
+
+                if (message.points && message.points.length > 0) {
+                    // Convert points to LatLng format
+                    const routePoints = message.points.map(point =>
+                        L.latLng(point.lat, point.lon)
+                    );
+
+                    // Create a layer group to hold all polylines
+                    routePolyline = L.layerGroup();
+
+                    // Create the three-layer styling that matches Leaflet Routing Machine
+                    // 1. Black background
+                    L.polyline(routePoints, {
+                        color: 'black',
+                        opacity: 0.15,
+                        weight: 9,
+                        lineCap: 'round',
+                        lineJoin: 'round'
+                    }).addTo(routePolyline);
+
+                    // 2. White middle layer
+                    L.polyline(routePoints, {
+                        color: 'white',
+                        opacity: 0.8,
+                        weight: 6,
+                        lineCap: 'round',
+                        lineJoin: 'round'
+                    }).addTo(routePolyline);
+
+                    // 3. Red top line
+                    L.polyline(routePoints, {
+                        color: 'red',
+                        opacity: 1,
+                        weight: 2,
+                        lineCap: 'round',
+                        lineJoin: 'round'
+                    }).addTo(routePolyline);
+
+                    // Add the layer group to the map
+                    routePolyline.addTo(map);
+
+                    // Fit map to the route bounds
+                    map.fitBounds(L.polyline(routePoints).getBounds());
+
+                    // Move marker to first point
+                    if (routePoints.length > 0) {
+                        marker.setLatLng(routePoints[0]);
+                    }
+                }
+                break;
+
+            case "current-point":
+                marker.setLatLng({lat: message.lat, lng: message.lon});
+                if (message.status === "Running") {
+                    actionButton.textContent = textPauseSimulation;
+                    if (statusText.textContent === statusTextDefault) {
+                        statusText.textContent = statusTextPreviousRouteRunning;
+                    }
+                    if (stopButton.style.display === "none") {
+                        stopButton.style.display = "inline-block";
+                    }
+                } else if (message.status === "Paused") {
+                    actionButton.textContent = textRunSimulation;
+                }
+                break;
+            default:
+                console.error("Unknown event type:", message.type);
+                break;
         }
     };
+
     eventSrc.onerror = (event) => {
         console.error("EventSource failed:", event);
     };
@@ -102,7 +184,7 @@
         routeWhileDragging: false,
         show: false,
         addWaypoints: false,
-        // createMarker: () => null, // no default markers
+        createMarker: () => null, // no default markers
     }).addTo(map);
 
     let routeDefined = false;
@@ -124,19 +206,7 @@
     });
 
     routingControl.on('routesfound', function (e) {
-        const totalDistance = e.routes[0].summary.totalDistance;
-        // if total distance is more than 10 km, convert the distance to kilometers
-        let totalDistanceString = "";
-        if (totalDistance > 10000) {
-            totalDistanceString = (totalDistance / 1000).toFixed(2) + 'km';
-        } else {
-            totalDistanceString = totalDistance.toFixed(2) + 'm';
-        }
-        var statusTextValue = `Total distance: ${totalDistanceString}`;
-        if (e.routes[0].name !== "") {
-            statusTextValue = `${e.routes[0].name}. ${statusTextValue}`;
-        }
-        statusText.textContent = statusTextValue;
+        statusText.textContent = formatRouteName(e.routes[0].name, e.routes[0].summary.totalDistance)
 
         fetch('/route', {
             method: 'POST',
@@ -145,12 +215,28 @@
             },
             body: JSON.stringify({
                 name: e.routes[0].name,
+                distance: e.routes[0].summary.totalDistance,
+                maxSpeed: parseInt(maxSpeedInput.value) || 0,
                 coordinates: e.routes[0].coordinates,
             }),
         }).catch((error) => {
             console.error('Error:', error);
         });
     });
+
+    function formatRouteName(name, distance) {
+        let distanceString = "";
+        if (distance > 10000) {
+            distanceString = (distance / 1000).toFixed(2) + 'km';
+        } else {
+            distanceString = distance.toFixed(2) + 'm';
+        }
+        let result = `Total distance: ${distanceString}`;
+        if (name !== "") {
+            result = `${name}. ${result}`;
+        }
+        return result;
+    }
 </script>
 </body>
 </html>

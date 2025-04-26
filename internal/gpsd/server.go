@@ -93,12 +93,10 @@ func (s *Server) handleConnection(conn net.Conn) {
 		default:
 		}
 
-		line, err := reader.ReadString(CommandSuffix)
-		if err != nil {
-			if err != io.EOF {
-				s.log.Error("GPSD: read error: ", err)
-			} else {
-				s.log.Error("GPSD: ", err)
+		line, lineErr := reader.ReadString(CommandSuffix)
+		if lineErr != nil {
+			if lineErr != io.EOF {
+				s.log.Errorf("GPSD: read error: %s", lineErr)
 			}
 			break
 		}

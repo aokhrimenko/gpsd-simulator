@@ -58,9 +58,6 @@ func runApp(currentVersionString string, flags *cmdFlags) error {
 	}
 
 	log := logger.NewStdoutLogger(logLevel)
-	log.Info("Info")
-	log.Debug("Debug")
-	log.Verbose("Verbose")
 	currentVersion, err := semver.NewVersion(currentVersionString)
 	if err != nil {
 		log.Fatal(err)
