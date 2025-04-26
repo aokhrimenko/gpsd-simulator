@@ -5,12 +5,15 @@ type Level int
 const (
 	LevelFatal Level = iota
 	LevelError
-	LevelWarn // 2
+	LevelWarn
 	LevelInfo
 	LevelDebug
+	LevelVerbose
 )
 
 type Logger interface {
+	Verbosef(format string, args ...interface{})
+	Verbose(args ...interface{})
 	Debugf(format string, args ...interface{})
 	Debug(args ...interface{})
 	Infof(format string, args ...interface{})

@@ -4,7 +4,6 @@ import (
 	"embed"
 	_ "embed"
 	"encoding/json"
-	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -19,11 +18,13 @@ var indexFile []byte
 var staticFiles embed.FS
 
 type routeRequest struct {
-	Name        string `json:"name"`
+	Name        string  `json:"name"`
+	Distance    float64 `json:"distance"`
 	Coordinates []struct {
 		Lat float64 `json:"lat"`
 		Lon float64 `json:"lng"`
 	} `json:"coordinates"`
+	MaxSpeed uint `json:"maxSpeed"`
 }
 
 func (r *routeRequest) ToPoints() []route.Point {
@@ -50,8 +51,23 @@ func (s *Server) publicHandler() http.Handler {
 	return http.FileServerFS(htmlContent)
 }
 
+type sseMessageInitialRoute struct {
+	Type     string        `json:"type"`
+	Name     string        `json:"name"`
+	Distance float64       `json:"distance"`
+	MaxSpeed uint          `json:"maxSpeed"`
+	Points   []route.Point `json:"points"`
+}
+
+type sseMessageCurrentPoint struct {
+	Type   string  `json:"type"`
+	Lat    float64 `json:"lat"`
+	Lon    float64 `json:"lon"`
+	Status string  `json:"status"`
+}
+
 func (s *Server) sseHandler(w http.ResponseWriter, r *http.Request) {
-	s.log.Info("HTTP: SSE client connected")
+	s.log.Infof("HTTP: SSE client connected from %s", r.RemoteAddr)
 	// Set http headers required for SSE
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -67,18 +83,61 @@ func (s *Server) sseHandler(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	rc := http.NewResponseController(w)
+
+	if s.routeCtrl.GetRouteSize() > 0 {
+		// send the initial route to the client
+		err := func() error {
+			initialRouteMessage := sseMessageInitialRoute{Type: "initial-route"}
+			currentRoute := s.routeCtrl.GetRoute()
+			initialRouteMessage.Name = currentRoute.Name
+			initialRouteMessage.Distance = currentRoute.Distance
+			initialRouteMessage.Points = currentRoute.Points
+			initialRouteMessage.MaxSpeed = currentRoute.MaxSpeed
+			_, err := w.Write([]byte("data: "))
+			if err != nil {
+				return err
+			}
+			err = json.NewEncoder(w).Encode(initialRouteMessage)
+			if err != nil {
+				return err
+			}
+			_, err = w.Write([]byte("\n\n"))
+			if err != nil {
+				return err
+			}
+			err = rc.Flush()
+			return err
+		}()
+		if err != nil {
+			s.log.Error("HTTP: error writing initial route: ", err)
+			return
+		}
+	}
+
+	currentPointMessage := sseMessageCurrentPoint{Type: "current-point"}
+
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
 		case <-clientGone:
-			s.log.Info("HTTP: SSE client disconnected")
+			s.log.Infof("HTTP: SSE client disconnected from %s", r.RemoteAddr)
 			return
 		case update := <-updates:
 			s.routeCtrl.GetState()
-			// Send an event to the client
-			// Here we send only the "data" field, but there are few others
-			_, err := fmt.Fprintf(w, "data: {\"lat\": %f, \"lon\": %f, \"status\": \"%s\"}\n\n", update.Lat, update.Lon, s.routeCtrl.GetState().String())
+			_, err := w.Write([]byte("data: "))
+			if err != nil {
+				return
+			}
+			currentPointMessage.Status = s.routeCtrl.GetState().String()
+			currentPointMessage.Lat = update.Lat
+			currentPointMessage.Lon = update.Lon
+
+			err = json.NewEncoder(w).Encode(currentPointMessage)
+			if err != nil {
+				return
+			}
+			_, err = w.Write([]byte("\n\n"))
 			if err != nil {
 				return
 			}
@@ -96,7 +155,7 @@ func (s *Server) runHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) stopHandler(w http.ResponseWriter, _ *http.Request) {
-	s.routeCtrl.UpdatePoints([]route.Point{})
+	s.routeCtrl.UpdateRoute("", 0, 0, []route.Point{})
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -107,6 +166,8 @@ func (s *Server) saveRoute(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	s.routeCtrl.UpdatePoints(request.ToPoints())
+	points := request.ToPoints()
+	s.log.Infof("HTTP: Saving route Name=%s, Distance=%f.2, MaxSpeed=%d, Points=%d", request.Name, request.Distance, request.MaxSpeed, len(points))
+	s.routeCtrl.UpdateRoute(request.Name, request.Distance, request.MaxSpeed, points)
 	w.WriteHeader(http.StatusCreated)
 }

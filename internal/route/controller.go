@@ -3,6 +3,7 @@ package route
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -28,11 +29,11 @@ const (
 )
 
 type Point struct {
-	Lat       float64
-	Lon       float64
-	Speed     float64
-	Elevation float64
-	Track     float64
+	Lat       float64 `json:"lat"`
+	Lon       float64 `json:"lon"`
+	Speed     float64 `json:"speed"`
+	Elevation float64 `json:"elevation"`
+	Track     float64 `json:"track"`
 }
 
 func (p Point) String() string {
@@ -40,8 +41,11 @@ func (p Point) String() string {
 }
 
 type Route struct {
-	Points []Point
-	State  State
+	Name     string
+	Distance float64
+	Points   []Point
+	State    State
+	MaxSpeed uint
 }
 
 func (r *Route) String() string {
@@ -78,32 +82,100 @@ func NewController(parentCtx context.Context, stepDelay time.Duration, log logge
 	return c
 }
 
-func (c *Controller) UpdatePoints(points []Point) {
+func (c *Controller) UpdateRoute(name string, distance float64, maxSpeed uint, points []Point) {
 	c.stopTheLoop <- struct{}{}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.route.Points = make([]Point, len(points))
+	c.route.Name = name
+	c.route.Distance = distance
+	c.route.MaxSpeed = maxSpeed
+	maxPointsDistance := float64(0)
+	if maxSpeed > 0 {
+		maxSpeedMs := float64(maxSpeed) / 3.6
+		maxPointsDistance = maxSpeedMs * c.stepDelay.Seconds()
+	}
+
+	c.route.Points = make([]Point, 0, len(points))
 	for i, point := range points {
 		var speed float64
 		var track float64
 
 		if i > 0 {
-			if points[i-1].Lat == point.Lat && points[i-1].Lon == point.Lon {
-				speed = points[i-1].Speed
-				track = points[i-1].Track
-			} else {
-				speed = calculateSpeedMetersPerSecond(points[i-1].Lat, points[i-1].Lon, point.Lat, point.Lon, c.stepDelay)
-				track = calculateInitialBearing(points[i-1].Lat, points[i-1].Lon, point.Lat, point.Lon)
+			prevIndex := len(c.route.Points) - 1
+			// Skip the same point
+			if c.route.Points[prevIndex].Lat == point.Lat && c.route.Points[prevIndex].Lon == point.Lon {
+				continue
 			}
+			speed = calculateSpeedMetersPerSecond(c.route.Points[prevIndex].Lat, c.route.Points[prevIndex].Lon, point.Lat, point.Lon, c.stepDelay)
+			track = calculateInitialBearing(c.route.Points[prevIndex].Lat, c.route.Points[prevIndex].Lon, point.Lat, point.Lon)
+
 		}
 
-		c.route.Points[i] = Point{Lat: point.Lat, Lon: point.Lon, Speed: speed, Track: track}
+		c.route.Points = append(c.route.Points, Point{Lat: point.Lat, Lon: point.Lon, Speed: speed, Track: track})
 	}
 
 	if err := c.updateRouteElevations(c.route); err != nil {
 		c.log.Error("Route: error updating route elevations: ", err)
+	}
+
+	// Tune route points not to reach the maximum speed
+	if len(c.route.Points) > 2 && maxPointsDistance > 0 {
+		newPoints := make([]Point, 0, len(c.route.Points))
+
+		for i, point := range c.route.Points {
+			if i == 0 {
+				newPoints = append(newPoints, point)
+				continue
+			}
+			prevIndex := len(newPoints) - 1
+			pointsDistance := calculateHaversineDistance(newPoints[prevIndex].Lat, newPoints[prevIndex].Lon, point.Lat, point.Lon)
+
+			if pointsDistance <= maxPointsDistance {
+				newPoints = append(newPoints, point)
+				continue
+			}
+			// Calculate number of segments needed based on exact distance
+			numSegments := int(math.Ceil(pointsDistance/maxPointsDistance)) - 1
+
+			// Origin point coordinates
+			lat1 := newPoints[prevIndex].Lat
+			lon1 := newPoints[prevIndex].Lon
+
+			// Calculate bearing once (direction from start to end)
+			bearing := calculateInitialBearing(lat1, lon1, point.Lat, point.Lon)
+			bearingRad := degreesToRadians(bearing)
+
+			for j := 1; j <= numSegments; j++ {
+				// Calculate exact distance from origin for this point
+				exactDistance := float64(j) * maxPointsDistance
+
+				// Calculate intermediate point at exactly this distance from origin
+				lat1Rad := degreesToRadians(lat1)
+				lon1Rad := degreesToRadians(lon1)
+
+				// Angular distance in radians
+				angularDistance := exactDistance / earthRadiusMeters
+
+				// Calculate intermediate point using exact distance
+				segmentLatRad := math.Asin(math.Sin(lat1Rad)*math.Cos(angularDistance) +
+					math.Cos(lat1Rad)*math.Sin(angularDistance)*math.Cos(bearingRad))
+				segmentLonRad := lon1Rad + math.Atan2(math.Sin(bearingRad)*math.Sin(angularDistance)*math.Cos(lat1Rad),
+					math.Cos(angularDistance)-math.Sin(lat1Rad)*math.Sin(segmentLatRad))
+
+				segmentLat := radiansToDegrees(segmentLatRad)
+				segmentLon := radiansToDegrees(segmentLonRad)
+
+				prevIndex = len(newPoints) - 1
+				segmentSpeed := calculateSpeedMetersPerSecond(newPoints[prevIndex].Lat, newPoints[prevIndex].Lon, segmentLat, segmentLon, c.stepDelay)
+				newPoints = append(newPoints, Point{Lat: segmentLat, Lon: segmentLon, Speed: segmentSpeed, Track: bearing, Elevation: newPoints[prevIndex].Elevation})
+			}
+		}
+
+		if len(newPoints) > len(c.route.Points) {
+			c.route.Points = newPoints
+		}
 	}
 
 	if len(c.route.Points) > 0 {
@@ -157,6 +229,49 @@ func (c *Controller) Shutdown() {
 	c.cancelFunc()
 }
 
+func (c *Controller) GetRouteSize() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return len(c.route.Points)
+}
+
+func (c *Controller) GetRoute() Route {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	clone := Route{
+		Name:     c.route.Name,
+		Distance: c.route.Distance,
+		Points:   make([]Point, len(c.route.Points)),
+		State:    c.route.State,
+		MaxSpeed: c.route.MaxSpeed,
+	}
+	copy(clone.Points, c.route.Points)
+
+	return clone
+}
+
+func (c *Controller) SetRoute(route Route) {
+	c.stopTheLoop <- struct{}{}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.route.Name = route.Name
+	c.route.Distance = route.Distance
+	c.route.MaxSpeed = route.MaxSpeed
+	c.route.Points = make([]Point, len(route.Points))
+	copy(c.route.Points, route.Points)
+
+	if len(c.route.Points) > 0 {
+		c.route.State = Running
+	} else {
+		c.route.State = Paused
+	}
+
+	c.log.Infof("Route: loaded route with %d points", len(c.route.Points))
+}
+
 func (c *Controller) broadcast(point Point) {
 	c.listenersLock.Lock()
 	defer c.listenersLock.Unlock()
@@ -173,14 +288,19 @@ loop:
 		pointsLen := len(c.route.Points)
 		c.mu.Unlock()
 
-		if pointsLen > 0 {
-			c.log.Debugf("Route: starting the loop for %d points", pointsLen)
-		}
-
 		select {
 		case <-c.stopTheLoop:
 			continue
 		default:
+		}
+
+		if pointsLen > 0 {
+			c.log.Debugf("Route: starting the loop for %d points", pointsLen)
+		} else {
+			// No points in the route, wait for new route
+			<-stepTimer.C
+			stepTimer.Reset(c.stepDelay)
+			continue
 		}
 
 		for i := 0; i < pointsLen; i++ {

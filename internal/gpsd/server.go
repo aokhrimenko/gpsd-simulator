@@ -3,6 +3,7 @@ package gpsd
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -12,10 +13,11 @@ import (
 	"github.com/aokhrimenko/gpsd-simulator/internal/route"
 )
 
-func NewServer(ctx context.Context, port string, log logger.Logger, routeCtrl *route.Controller) (*Server, error) {
+func NewServer(ctx context.Context, port uint, log logger.Logger, routeCtrl *route.Controller) (*Server, error) {
+
 	server := &Server{
 		log:       log,
-		addr:      ":" + port,
+		addr:      fmt.Sprintf(":%d", port),
 		routeCtrl: routeCtrl,
 	}
 	server.ctx, server.cancel = context.WithCancel(ctx)
@@ -74,7 +76,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		s.log.Infof("GPSD: Closing connection to %s", conn.RemoteAddr().String())
 		unsubscribeFunc()
 		cancel()
-		conn.Close()
+		_ = conn.Close()
 	}()
 
 	_, err := conn.Write([]byte(VersionLine))
@@ -91,12 +93,10 @@ func (s *Server) handleConnection(conn net.Conn) {
 		default:
 		}
 
-		line, err := reader.ReadString(CommandSuffix)
-		if err != nil {
-			if err != io.EOF {
-				s.log.Error("GPSD: read error: ", err)
-			} else {
-				s.log.Error("GPSD: ", err)
+		line, lineErr := reader.ReadString(CommandSuffix)
+		if lineErr != nil {
+			if lineErr != io.EOF {
+				s.log.Errorf("GPSD: read error: %s", lineErr)
 			}
 			break
 		}
