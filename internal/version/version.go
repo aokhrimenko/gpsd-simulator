@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
+
 	"github.com/aokhrimenko/gpsd-simulator/internal/logger"
 )
 
@@ -24,7 +26,7 @@ type githubLatestRelease struct {
 	Body      string    `json:"body"`
 }
 
-func CheckForUpdate(ctx context.Context, log logger.Logger, currentVersion string) {
+func CheckForUpdate(ctx context.Context, log logger.Logger, currentVersion *semver.Version) {
 	client := &http.Client{Transport: &http.Transport{}}
 
 	for i := 0; i < retries; i++ {
@@ -33,14 +35,22 @@ func CheckForUpdate(ctx context.Context, log logger.Logger, currentVersion strin
 			return
 		default:
 		}
-		latestRelease, err := fetch(client)
+		latestReleaseData, err := fetch(client)
 		if err != nil {
 			log.Debugf("Version: error fetching latest release: %v", err)
 			time.Sleep(retryTimeout)
 			continue
 		}
-		if latestRelease.Name != currentVersion {
-			notifyUpdateAvailable(log, latestRelease)
+
+		latestVersion, err := semver.NewVersion(latestReleaseData.Name)
+		if err != nil {
+			log.Debugf("Version: error parsing latest release version from GitHub: %v", err)
+			time.Sleep(retryTimeout)
+			continue
+		}
+
+		if latestVersion.GreaterThan(currentVersion) {
+			notifyUpdateAvailable(log, latestVersion, latestReleaseData.Body, latestReleaseData.HtmlUrl)
 		}
 		return
 	}
@@ -62,12 +72,12 @@ func fetch(client *http.Client) (githubLatestRelease, error) {
 	return latestRelease, nil
 }
 
-func notifyUpdateAvailable(log logger.Logger, latestRelease githubLatestRelease) {
+func notifyUpdateAvailable(log logger.Logger, latestVersion *semver.Version, releaseNotes, downloadLink string) {
 	log.Raw("")
 	log.Raw("########################################################################################################################")
-	log.Rawf("New version available: %s", latestRelease.Name)
-	log.Rawf("Release notes: %s", latestRelease.Body)
-	log.Rawf("Download link: %s", latestRelease.HtmlUrl)
+	log.Rawf("New version available: v%s", latestVersion.String())
+	log.Rawf("Release notes: %s", releaseNotes)
+	log.Rawf("Download link: %s", downloadLink)
 	log.Raw("########################################################################################################################")
 	log.Raw("")
 }

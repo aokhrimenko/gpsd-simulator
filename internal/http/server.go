@@ -9,17 +9,16 @@ import (
 	"github.com/aokhrimenko/gpsd-simulator/internal/route"
 )
 
-func NewServer(ctx context.Context, port string, log logger.Logger, routeCtrl *route.Controller) (*Server, error) {
+func NewServer(ctx context.Context, port uint, log logger.Logger, routeCtrl *route.Controller) (*Server, error) {
 	server := &Server{
 		log:       log,
-		port:      port,
 		routeCtrl: routeCtrl,
 	}
 	server.ctx, server.cancel = context.WithCancel(ctx)
 
 	mux := http.NewServeMux()
 	server.srv = &http.Server{
-		Addr:    fmt.Sprintf(":%s", port),
+		Addr:    fmt.Sprintf(":%d", port),
 		Handler: mux,
 	}
 
@@ -36,7 +35,6 @@ type Server struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	log       logger.Logger
-	port      string
 	srv       *http.Server
 	routeCtrl *route.Controller
 }

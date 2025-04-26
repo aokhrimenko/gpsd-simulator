@@ -12,6 +12,23 @@ type stdout struct {
 	level Level
 }
 
+func (l *stdout) Verbosef(format string, args ...interface{}) {
+	if shouldLog(LevelVerbose, l.level) {
+		return
+	}
+	fmt.Print("[DEBUG] ")
+	fmt.Printf(format, args...)
+	fmt.Println()
+}
+
+func (l *stdout) Verbose(args ...interface{}) {
+	if shouldLog(LevelVerbose, l.level) {
+		return
+	}
+	fmt.Print("[DEBUG] ")
+	fmt.Println(args...)
+}
+
 func (l stdout) Debugf(format string, args ...interface{}) {
 	if shouldLog(LevelDebug, l.level) {
 		return

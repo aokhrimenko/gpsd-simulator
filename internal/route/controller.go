@@ -40,8 +40,9 @@ func (p Point) String() string {
 }
 
 type Route struct {
-	Points []Point
-	State  State
+	Points   []Point
+	State    State
+	MaxSpeed uint
 }
 
 func (r *Route) String() string {
@@ -173,14 +174,19 @@ loop:
 		pointsLen := len(c.route.Points)
 		c.mu.Unlock()
 
-		if pointsLen > 0 {
-			c.log.Debugf("Route: starting the loop for %d points", pointsLen)
-		}
-
 		select {
 		case <-c.stopTheLoop:
 			continue
 		default:
+		}
+
+		if pointsLen > 0 {
+			c.log.Debugf("Route: starting the loop for %d points", pointsLen)
+		} else {
+			// No points in the route, wait for new route
+			<-stepTimer.C
+			stepTimer.Reset(c.stepDelay)
+			continue
 		}
 
 		for i := 0; i < pointsLen; i++ {
