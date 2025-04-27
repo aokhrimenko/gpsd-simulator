@@ -20,7 +20,6 @@ import (
 type cmdFlags struct {
 	GpsdPort  uint
 	WebUiPort uint
-	RouteFile string
 	Debug     bool
 	Verbose   bool
 }
@@ -31,14 +30,12 @@ func Root(currentVersion string) *cobra.Command {
 	var rootCmd = &cobra.Command{
 		Use:   "gpsd-simulator",
 		Short: "GPSD simulator",
-		//Example: ``,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runApp(currentVersion, flags)
 		},
 	}
 	rootCmd.Flags().UintVarP(&flags.GpsdPort, "gpsd-port", "g", 2947, "Port for the GPSD server")
 	rootCmd.Flags().UintVarP(&flags.WebUiPort, "webui-port", "w", 8881, "Port for the web UI")
-	rootCmd.Flags().StringVarP(&flags.RouteFile, "route-file", "r", "", "Path to the route file to import")
 	rootCmd.Flags().BoolVarP(&flags.Debug, "debug", "d", false, "Enable debug logging")
 	rootCmd.Flags().BoolVarP(&flags.Verbose, "verbose", "v", false, "Enable verbose logging")
 	rootCmd.Flags().SortFlags = false

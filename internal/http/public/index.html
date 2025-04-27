@@ -13,6 +13,27 @@
             bottom: 0;
             width: 100%;
         }
+        .btn {
+            min-width: 150px;
+            padding: 10px 20px;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-primary {
+            background-color: rgba(53,78,225,0.87);
+        }
+
+        .btn-danger {
+            background-color: rgba(217,12,88,0.87);
+        }
+
+        .btn-success {
+            background-color: rgba(34,139,34,0.87);
+        }
     </style>
 </head>
 <body>
@@ -20,8 +41,11 @@
 <span id="statusText" style="margin: 10px; text-align: center; display: block; width: 100%"></span>
 <div style="text-align: center;">
     <label for="maxSpeedInput">Speed Limit for the new route, km/h</label><input id="maxSpeedInput" type="number" min="0" max="200" value="0" style="min-width: 50px; padding: 10px; width: 50px; margin: 10px; border: 1px solid #ccc; border-radius: 5px; box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);">
-    <button id="actionButton" style="min-width: 150px; padding: 10px 20px; background-color: rgba(53,78,225,0.87); color: white; border: none; border-radius: 5px; cursor: pointer; box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);"></button>
-    <button id="stopButton" style="display: none; min-width: 150px; padding: 10px 20px; background-color: rgba(217,12,88,0.87); color: white; border: none; border-radius: 5px; cursor: pointer; box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);">Stop and delete the route</button>
+    <button id="actionButton" class="btn btn-primary"></button>
+    <button id="stopButton" class="btn btn-danger" style="display: none;">Stop and delete the route</button>
+    <button id="downloadRouteButton" class="btn btn-success" style="display: none;">Download Route</button>
+    <input type="file" id="routeFileInput" accept="application/json" style="display:none;">
+    <button id="routeFileUploadButton" class="btn btn-success">Upload Route</button>
 </div>
 <div id="map"></div>
 
@@ -37,7 +61,10 @@
     const statusText = document.getElementById("statusText");
     const actionButton = document.getElementById("actionButton");
     const stopButton = document.getElementById("stopButton");
+    const downloadRouteButton = document.getElementById("downloadRouteButton");
     const maxSpeedInput = document.getElementById("maxSpeedInput");
+    const fileInput = document.getElementById('routeFileInput');
+    const routeFileUploadButton = document.getElementById('routeFileUploadButton');
 
     const textAwaitingUpdates = "Awaiting updates";
     const textPauseSimulation = "Pause simulation";
@@ -46,11 +73,14 @@
 
     const statusTextDefault = "You have to define route first: click on starting point and on the ending one";
     const statusTextRouteStartDefined = "Great, now click on the ending point";
-    const statusTextRouteDefined = "Route defined - calculating points...";
-    const statusTextPreviousRouteRunning = "Previous route is running";
+    const statusTextRouteIsLoading = "Route is loading...";
     statusText.textContent = statusTextDefault;
 
     let waypoints = [];
+
+    routeFileUploadButton.addEventListener("click", () => {
+        fileInput.click();
+    });
 
     actionButton.addEventListener("click", () => {
         if (actionButton.textContent === textAwaitingUpdates) {
@@ -64,21 +94,55 @@
         });
     });
 
+    downloadRouteButton.addEventListener("click", () => {
+        fetch('/route', {
+            method: 'GET',
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                const a = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                a.href = url;
+                a.download = `Route ${statusText.textContent}.json`;
+                document.body.appendChild(a);
+                a.click();
+
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+    });
+
+    function onCurrentRouteDelete() {
+        stopButton.style.display = "none";
+        downloadRouteButton.style.display = "none";
+        routeFileUploadButton.style.display = "inline-block";
+        actionButton.textContent = textAwaitingUpdates;
+        statusText.textContent = statusTextDefault;
+        waypoints = [];
+        if (routePolyline) {
+            map.removeLayer(routePolyline);
+            routePolyline = null;
+        }
+        routingControl._clearLines()
+        marker.setLatLng({lat: 0, lng: 0})
+        maxSpeedInput.readOnly = false;
+    }
+
     stopButton.addEventListener("click", () => {
         fetch('/route/stop', {
             method: 'GET',
         }).then(() => {
-            stopButton.style.display = "none";
-            actionButton.textContent = textAwaitingUpdates;
-            statusText.textContent = statusTextDefault;
-            waypoints = [];
-            if (routePolyline) {
-                map.removeLayer(routePolyline);
-                routePolyline = null;
-            }
-            routingControl._clearLines()
-            marker.setLatLng({lat: 0, lng: 0})
-            maxSpeedInput.readOnly = false;
+            onCurrentRouteDelete();
         }).catch((error) => {
             console.error('Error:', error);
         });
@@ -93,16 +157,16 @@
         }
 
         switch (message.type) {
+            case "route-deleted":
+                onCurrentRouteDelete();
+                break;
             case "initial-route":
-                console.log("Initial route:", message);
-                // Remove previous route if exists
-                if (routePolyline) {
-                    map.removeLayer(routePolyline);
-                }
+                onCurrentRouteDelete();
 
                 statusText.textContent = formatRouteName(message.name, message.distance)
                 maxSpeedInput.value = message.maxSpeed || 0;
                 maxSpeedInput.readOnly = true;
+                routeFileUploadButton.style.display = "none";
 
                 if (message.points && message.points.length > 0) {
                     // Convert points to LatLng format
@@ -157,15 +221,19 @@
             case "current-point":
                 marker.setLatLng({lat: message.lat, lng: message.lon});
                 if (message.status === "Running") {
-                    actionButton.textContent = textPauseSimulation;
-                    if (statusText.textContent === statusTextDefault) {
-                        statusText.textContent = statusTextPreviousRouteRunning;
+                    if (actionButton.textContent !== textPauseSimulation) {
+                        actionButton.textContent = textPauseSimulation;
                     }
                     if (stopButton.style.display === "none") {
                         stopButton.style.display = "inline-block";
                     }
+                    if (downloadRouteButton.style.display === "none") {
+                        downloadRouteButton.style.display = "inline-block";
+                    }
                 } else if (message.status === "Paused") {
-                    actionButton.textContent = textRunSimulation;
+                    if (actionButton.textContent !== textRunSimulation) {
+                        actionButton.textContent = textRunSimulation;
+                    }
                 }
                 break;
             default:
@@ -202,7 +270,7 @@
         if (waypoints.length === 1) {
             statusText.textContent = statusTextRouteStartDefined;
         } else if (waypoints.length === 2 && !routeDefined) {
-            statusText.textContent = statusTextRouteDefined;
+            statusText.textContent = statusTextRouteIsLoading;
             routeDefined = true;
         }
 
@@ -211,6 +279,7 @@
     routingControl.on('routesfound', function (e) {
         statusText.textContent = formatRouteName(e.routes[0].name, e.routes[0].summary.totalDistance)
         maxSpeedInput.readOnly = true;
+        routeFileUploadButton.style.display = "none";
 
         fetch('/route', {
             method: 'POST',
@@ -226,6 +295,41 @@
         }).catch((error) => {
             console.error('Error:', error);
         });
+    });
+
+    fileInput.addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const routeData = JSON.parse(e.target.result);
+
+                fetch('/route/set', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(routeData)
+                })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Upload failed');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Failed to upload route');
+                    });
+            } catch (error) {
+                console.error('Invalid JSON file:', error);
+                alert('Invalid JSON file');
+            }
+        };
+        statusText.textContent = statusTextRouteIsLoading
+        reader.readAsText(file);
+        fileInput.value = '';
     });
 
     function formatRouteName(name, distance) {

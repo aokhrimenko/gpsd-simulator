@@ -5,7 +5,7 @@
 The goal of this project is to provide a simple way to simulate GPS data generation in gpsd format. 
 Application provides 
 - a gpsd-like server
-- a simple web interface to define the route and run/pause the simulation
+- a simple web interface to define the route and run/pause the simulation and to save/load the route to/from the file.
 
 The interface as simple as possible. All you need is to define the route by clicking on the starting and on the ending points, 
 and click on the "Run simulation" button. The simulation will start and the gpsd server will start sending the data to the client.
@@ -21,6 +21,9 @@ from the last point.
 
 - [x] Define route by clicking on the starting and on the ending points
 - [x] Run/pause simulation
+- [x] Save route to the file
+- [x] Load route from the file
+- [x] Define the maximum speed on the route
 
 ### GPSD server
 
@@ -46,11 +49,11 @@ xattr -d com.apple.quarantine gpsd-simulator
 ```
 
 ## Usage
+Simply run the binary:
 ```shell
 gpsd-simulator
 ```
-- gpsd port - port for gpsd-simulator server
-- http port - port for the HTTP server of the UI
+It will start the gpsd server on port `2947` and the web interface on port `8881`.
 
 After running the application, open the browser and navigate to the `http://localhost:8881` to open the UI.
 Also, don't forget to point your application which is intended to work with gpsd to the `localhost:2947`.
