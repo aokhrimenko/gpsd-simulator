@@ -25,6 +25,13 @@ from the last point.
 - [x] Load route from the file
 - [x] Define the maximum speed on the route
 
+The speed limit could be set only prior to the route calculation. If it's set to zero - there is no speed limit. 
+And since the simulator is sending one point per second, and the speed is calculated based on the distance between the points,
+the speed could vary a lot.
+
+![speed limit](docs/speed-limit.gif)
+
+
 ### GPSD server
 
 Commands:
