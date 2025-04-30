@@ -34,6 +34,9 @@
         .btn-success {
             background-color: rgba(34,139,34,0.87);
         }
+        .leaflet-routing-container {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -54,8 +57,44 @@
 
 <script>
     const map = L.map('map').setView([47.37769, 8.54151], 13); // Default location in Zürich
-    const marker = L.marker({lat: 0, lng: 0}).addTo(map);
+    const marker = L.marker(
+        {lat: 0, lng: 0},
+        {
+            icon: L.icon({
+                iconUrl: '/images/marker-icon.png',
+                iconRetinaUrl: '/images/marker-icon-2x.png',
+                iconSize: [25, 41],
+                iconAnchor: [13, 41],
+                popupAnchor: [0, -41],
+            })
+        }
+    ).addTo(map).bindPopup("");
+    const markerA = L.marker(
+        {lat: 0, lng: 0},
+        {
+            icon: L.icon({
+                iconUrl: '/images/marker-icon-a.png',
+                iconRetinaUrl: '/images/marker-icon-a-2x.png',
+                iconSize: [25, 41],
+                iconAnchor: [13, 41],
+            })
+        }
+    ).addTo(map);
+    const markerB = L.marker(
+        {lat: 0, lng: 0},
+        {
+            icon: L.icon({
+                iconUrl: '/images/marker-icon-b.png',
+                iconRetinaUrl: '/images/marker-icon-b-2x.png',
+                iconSize: [25, 41],
+                iconAnchor: [13, 41],
+            })
+        }
+    ).addTo(map);
+
     let routePolyline = null;
+    let waypoints = [];
+    let routeDefined = false;
 
     const eventSrc = new EventSource("/events");
     const statusText = document.getElementById("statusText");
@@ -76,7 +115,13 @@
     const statusTextRouteIsLoading = "Route is loading...";
     statusText.textContent = statusTextDefault;
 
-    let waypoints = [];
+    marker.addEventListener("click", (e) => {
+        if (!routeDefined) {
+            return;
+        }
+
+        marker.toggleTooltip();
+    });
 
     routeFileUploadButton.addEventListener("click", () => {
         fileInput.click();
@@ -129,12 +174,16 @@
         actionButton.textContent = textAwaitingUpdates;
         statusText.textContent = statusTextDefault;
         waypoints = [];
+        routeDefined = false;
         if (routePolyline) {
             map.removeLayer(routePolyline);
             routePolyline = null;
         }
         routingControl._clearLines()
+        marker.closePopup();
         marker.setLatLng({lat: 0, lng: 0})
+        markerA.setLatLng({lat: 0, lng: 0})
+        markerB.setLatLng({lat: 0, lng: 0})
         maxSpeedInput.readOnly = false;
     }
 
@@ -162,13 +211,16 @@
                 break;
             case "initial-route":
                 onCurrentRouteDelete();
-
+                routeDefined = true;
                 statusText.textContent = formatRouteName(message.name, message.distance)
                 maxSpeedInput.value = message.maxSpeed || 0;
                 maxSpeedInput.readOnly = true;
                 routeFileUploadButton.style.display = "none";
 
                 if (message.points && message.points.length > 0) {
+                    markerA.setLatLng(message.points[0])
+                    markerB.setLatLng(message.points[message.points.length - 1])
+
                     // Convert points to LatLng format
                     const routePoints = message.points.map(point =>
                         L.latLng(point.lat, point.lon)
@@ -220,6 +272,8 @@
 
             case "current-point":
                 marker.setLatLng({lat: message.lat, lng: message.lon});
+                marker.setPopupContent(`Speed: ${(message.speed * 3.6).toFixed(2)}km/h<br/>Lat: ${message.lat}<br/>Lon: ${message.lon}`)
+
                 if (message.status === "Running") {
                     if (actionButton.textContent !== textPauseSimulation) {
                         actionButton.textContent = textPauseSimulation;
@@ -258,22 +312,23 @@
         createMarker: () => null, // no default markers
     }).addTo(map);
 
-    let routeDefined = false;
     map.on('click', function (e) {
-        if (waypoints.length < 2) {
-            waypoints.push(e.latlng);
-            if (waypoints.length === 2) {
+        if (routeDefined) {
+            return;
+        }
+        waypoints.push(e.latlng);
+        switch (waypoints.length) {
+            case 1:
+                statusText.textContent = statusTextRouteStartDefined;
+                markerA.setLatLng(e.latlng);
+                break;
+            case 2:
+                markerB.setLatLng(e.latlng);
+                statusText.textContent = statusTextRouteIsLoading;
+                routeDefined = true;
                 routingControl.setWaypoints(waypoints);
-            }
+                break;
         }
-
-        if (waypoints.length === 1) {
-            statusText.textContent = statusTextRouteStartDefined;
-        } else if (waypoints.length === 2 && !routeDefined) {
-            statusText.textContent = statusTextRouteIsLoading;
-            routeDefined = true;
-        }
-
     });
 
     routingControl.on('routesfound', function (e) {

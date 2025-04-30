@@ -6,7 +6,7 @@ import (
 	"github.com/aokhrimenko/gpsd-simulator/internal/cmd"
 )
 
-var Version = "v0.2.0-dev"
+var Version = "v0.2.1-dev"
 
 func main() {
 	command := cmd.Root(Version)

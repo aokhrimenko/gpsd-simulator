@@ -64,6 +64,7 @@ type sseMessageCurrentPoint struct {
 	Type   string  `json:"type"`
 	Lat    float64 `json:"lat"`
 	Lon    float64 `json:"lon"`
+	Speed  float64 `json:"speed"`
 	Status string  `json:"status"`
 }
 
@@ -173,6 +174,7 @@ func (s *Server) sseHandler(w http.ResponseWriter, r *http.Request) {
 			currentPointMessage.Status = s.routeCtrl.GetState().String()
 			currentPointMessage.Lat = update.Lat
 			currentPointMessage.Lon = update.Lon
+			currentPointMessage.Speed = update.Speed
 
 			err = json.NewEncoder(w).Encode(currentPointMessage)
 			if err != nil {
