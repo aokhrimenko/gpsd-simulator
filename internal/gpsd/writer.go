@@ -15,7 +15,7 @@ const (
 
 	WatchCommand = `?WATCH=`
 
-	TpvTemplate   = "{\"class\":\"TPV\",\"device\":\"/dev/ttyUSB1\",\"mode\":3,\"time\":\"%s\",\"lat\":%f,\"lon\":%f,\"alt\":%3.f,\"altHAE\":%3.f,\"track\":%.3f,\"speed\":%.3f}\n"
+	TpvTemplate   = "{\"class\":\"TPV\",\"device\":\"/dev/ttyUSB1\",\"mode\":3,\"time\":\"%s\",\"lat\":%f,\"lon\":%f,\"alt\":%.3f,\"altHAE\":%.3f,\"track\":%.3f,\"speed\":%.3f}\n"
 	CommandSuffix = ';'
 )
 

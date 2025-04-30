@@ -230,7 +230,7 @@ func (s *Server) saveRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	points := request.ToPoints()
-	s.log.Infof("HTTP: Saving route Name=%s, Distance=%f.2, MaxSpeed=%d, Points=%d", request.Name, request.Distance, request.MaxSpeed, len(points))
+	s.log.Infof("HTTP: Saving route Name=%s, Distance=%.2f, MaxSpeed=%d, Points=%d", request.Name, request.Distance, request.MaxSpeed, len(points))
 	s.routeCtrl.UpdateRoute(request.Name, request.Distance, request.MaxSpeed, points)
 	s.sseBroadcast(sseMessageTypeInitialRoute)
 	w.WriteHeader(http.StatusCreated)
@@ -243,7 +243,7 @@ func (s *Server) setRoute(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	s.log.Infof("HTTP: Setting route file Name=%s, Distance=%f.2, MaxSpeed=%d, Points=%d", request.Name, request.Distance, request.MaxSpeed, len(request.Points))
+	s.log.Infof("HTTP: Setting route file Name=%s, Distance=%.2f, MaxSpeed=%d, Points=%d", request.Name, request.Distance, request.MaxSpeed, len(request.Points))
 	s.routeCtrl.SetRoute(request)
 	s.sseBroadcast(sseMessageTypeInitialRoute)
 	w.WriteHeader(http.StatusCreated)
