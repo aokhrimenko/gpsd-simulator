@@ -44,8 +44,8 @@ TPV report:
 - [x] Altitude
 - [x] Speed
 - [x] Track
-- [ ] Device customization
-- [ ] Mode customization
+- [x] Device customization
+- [x] Mode customization
 
 ## Installation
 
@@ -71,6 +71,27 @@ gpsd-simulator --gpsd-port 2947 --webui-port 8881
 ```
 
 Additional debug information could be enabled with the `-d` flag, or even more debug information with `-v` flag.
+
+Also, you can load the route from the file, created by the web interface. In this case the web interface isn't needed at all.
+Loaded route will be started automatically. You could find some example routes in the [examples](examples) folder.
+```shell
+gpsd-simulator --file examples/A13-A96-236km.json
+```
+
+Different GPSD messages could be customized with the command line arguments:
+```shell
+      --version-release string     VERSION/release field (default "3.25")
+      --version-revision string    VERSION/rev field (default "3.25")
+      --version-proto-major uint   VERSION/proto_major field (default 3)
+      --version-proto-minor uint   VERSION/proto_minor field (default 25)
+      --device-path string         DEVICES/devices/path field (default "/dev/ttyUSB1")
+      --device-driver string       DEVICES/devices/driver field (default "NMEA0183")
+      --device-activated string    DEVICES/devices/activated field (default "2025-03-21T12:20:29.002Z")
+      --device-bps uint            DEVICES/devices/bps field (default 9600)
+      --device-parity string       DEVICES/devices/parity field (default "N")
+      --device-stop-bits uint      DEVICES/devices/stopbits field (default 1)
+      --tpv-mode uint              TPV/mode field (default 3)
+```
 
 ## Credits
 

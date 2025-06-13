@@ -2,8 +2,10 @@ package route
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
+	"os"
 	"sync"
 	"time"
 
@@ -270,6 +272,25 @@ func (c *Controller) SetRoute(route Route) {
 	}
 
 	c.log.Infof("Route: loaded route with %d points", len(c.route.Points))
+}
+
+func (c *Controller) LoadRouteFromFile(filePath string) error {
+	if filePath == "" {
+		return nil
+	}
+
+	file, err := os.OpenFile(filePath, os.O_RDONLY, 0644)
+	if err != nil {
+		return err
+	}
+
+	var route Route
+	if err = json.NewDecoder(file).Decode(&route); err != nil {
+		return fmt.Errorf("JSON decode failed: %w", err)
+	}
+	c.SetRoute(route)
+
+	return nil
 }
 
 func (c *Controller) broadcast(point Point) {

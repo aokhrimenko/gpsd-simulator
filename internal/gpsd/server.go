@@ -13,12 +13,12 @@ import (
 	"github.com/aokhrimenko/gpsd-simulator/internal/route"
 )
 
-func NewServer(ctx context.Context, port uint, log logger.Logger, routeCtrl *route.Controller) (*Server, error) {
-
+func NewServer(ctx context.Context, port uint, log logger.Logger, routeCtrl *route.Controller, writerConfig WriterConfig) (*Server, error) {
 	server := &Server{
-		log:       log,
-		addr:      fmt.Sprintf(":%d", port),
-		routeCtrl: routeCtrl,
+		log:          log,
+		addr:         fmt.Sprintf(":%d", port),
+		routeCtrl:    routeCtrl,
+		writerConfig: writerConfig,
 	}
 	server.ctx, server.cancel = context.WithCancel(ctx)
 	var err error
@@ -27,12 +27,13 @@ func NewServer(ctx context.Context, port uint, log logger.Logger, routeCtrl *rou
 }
 
 type Server struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	addr      string
-	listener  net.Listener
-	log       logger.Logger
-	routeCtrl *route.Controller
+	ctx          context.Context
+	cancel       context.CancelFunc
+	addr         string
+	listener     net.Listener
+	log          logger.Logger
+	routeCtrl    *route.Controller
+	writerConfig WriterConfig
 }
 
 func (s *Server) Startup() (err error) {
@@ -79,8 +80,9 @@ func (s *Server) handleConnection(conn net.Conn) {
 		_ = conn.Close()
 	}()
 
-	_, err := conn.Write([]byte(VersionLine))
-	if err != nil {
+	writer := NewWriter(conn, s.writerConfig)
+
+	if err := writer.WriteVersion(); err != nil {
 		s.log.Debug("GPSD: VersionLine write error:", err)
 		return
 	}
@@ -103,20 +105,18 @@ func (s *Server) handleConnection(conn net.Conn) {
 		s.log.Debugf("GPSD: Received: %s", line)
 		if strings.HasPrefix(line, WatchCommand) && !tpvReportingStarted {
 			tpvReportingStarted = true
-			go s.sendTpvReports(ctx, conn, updates)
+			go s.sendTpvReports(ctx, writer, updates)
 		}
 	}
 
 }
 
-func (s *Server) sendTpvReports(ctx context.Context, conn net.Conn, updates chan route.Point) {
-	_, err := conn.Write([]byte(DevicesLine))
-	if err != nil {
+func (s *Server) sendTpvReports(ctx context.Context, writer *Writer, updates chan route.Point) {
+	if err := writer.WriteDevices(); err != nil {
 		s.log.Errorf("GPSD: DevicesLine write error failed: %v", err)
 		return
 	}
-	_, err = conn.Write([]byte(WatchLine))
-	if err != nil {
+	if err := writer.WriteWatch(); err != nil {
 		s.log.Errorf("GPSD: WatchLine write error failed: %v", err)
 		return
 	}
@@ -130,8 +130,7 @@ func (s *Server) sendTpvReports(ctx context.Context, conn net.Conn, updates chan
 			if !isOpen {
 				return
 			}
-			err = WriteTPVReport(conn, point)
-			if err != nil {
+			if err := writer.WriteTPVReport(point); err != nil {
 				s.log.Errorf("GPSD: sendTpvReports write error failed on point %s: %v", point, err)
 				return
 			}
