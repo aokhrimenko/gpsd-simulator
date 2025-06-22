@@ -25,41 +25,40 @@ type mainConfig struct {
 	File      string
 }
 
-func Root(currentVersion string) *cobra.Command {
+func Run(currentVersion string) *cobra.Command {
 	mainCfg := &mainConfig{}
 	writerCfg := gpsd.WriterConfig{}
-	var rootCmd = &cobra.Command{
-		Use:     "gpsd-simulator",
-		Short:   "GPSD simulator",
+	var runCmd = &cobra.Command{
+		Use:     "run",
 		Version: currentVersion,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runApp(currentVersion, mainCfg, writerCfg)
+			return executeRunCommand(currentVersion, mainCfg, writerCfg)
 		},
 	}
-	rootCmd.Flags().UintVarP(&mainCfg.GpsdPort, "gpsd-port", "g", 2947, "Port for the GPSD server")
-	rootCmd.Flags().UintVarP(&mainCfg.WebUiPort, "webui-port", "w", 8881, "Port for the web UI")
-	rootCmd.Flags().BoolVarP(&mainCfg.Debug, "debug", "d", false, "Enable debug logging")
-	rootCmd.Flags().BoolVarP(&mainCfg.Verbose, "verbose", "v", false, "Enable verbose logging")
-	rootCmd.Flags().StringVarP(&mainCfg.File, "file", "f", "", "Path to the route file (JSON format)")
+	runCmd.Flags().UintVarP(&mainCfg.GpsdPort, "gpsd-port", "g", 2947, "Port for the GPSD server")
+	runCmd.Flags().UintVarP(&mainCfg.WebUiPort, "webui-port", "w", 8881, "Port for the web UI")
+	runCmd.Flags().BoolVarP(&mainCfg.Debug, "debug", "d", false, "Enable debug logging")
+	runCmd.Flags().BoolVarP(&mainCfg.Verbose, "verbose", "v", false, "Enable verbose logging")
+	runCmd.Flags().StringVarP(&mainCfg.File, "file", "f", "", "Path to the route file (JSON format)")
 
 	// WriterConfig
-	rootCmd.Flags().StringVar(&writerCfg.VersionRelease, "version-release", gpsd.DefaultVersionRelease, "VERSION/release field")
-	rootCmd.Flags().StringVar(&writerCfg.VersionRev, "version-revision", gpsd.DefaultVersionRev, "VERSION/rev field")
-	rootCmd.Flags().UintVar(&writerCfg.VersionProtoMajor, "version-proto-major", gpsd.DefaultVersionProtoMajor, "VERSION/proto_major field")
-	rootCmd.Flags().UintVar(&writerCfg.VersionProtoMinor, "version-proto-minor", gpsd.DefaultVersionProtoMinor, "VERSION/proto_minor field")
-	rootCmd.Flags().StringVar(&writerCfg.DevicePath, "device-path", gpsd.DefaultVersionDevicePath, "DEVICES/devices/path field")
-	rootCmd.Flags().StringVar(&writerCfg.DeviceDriver, "device-driver", gpsd.DefaultDeviceDriver, "DEVICES/devices/driver field")
-	rootCmd.Flags().StringVar(&writerCfg.DeviceActivated, "device-activated", gpsd.DefaultDeviceActivated, "DEVICES/devices/activated field")
-	rootCmd.Flags().UintVar(&writerCfg.DeviceBps, "device-bps", gpsd.DefaultDeviceBps, "DEVICES/devices/bps field")
-	rootCmd.Flags().StringVar(&writerCfg.DeviceParity, "device-parity", gpsd.DefaultDeviceParity, "DEVICES/devices/parity field")
-	rootCmd.Flags().UintVar(&writerCfg.DeviceStopBits, "device-stop-bits", gpsd.DefaultDeviceStopBits, "DEVICES/devices/stopbits field")
-	rootCmd.Flags().UintVar(&writerCfg.TpvMode, "tpv-mode", gpsd.DefaultTpvMode, "TPV/mode field")
+	runCmd.Flags().StringVar(&writerCfg.VersionRelease, "version-release", gpsd.DefaultVersionRelease, "VERSION/release field")
+	runCmd.Flags().StringVar(&writerCfg.VersionRev, "version-revision", gpsd.DefaultVersionRev, "VERSION/rev field")
+	runCmd.Flags().UintVar(&writerCfg.VersionProtoMajor, "version-proto-major", gpsd.DefaultVersionProtoMajor, "VERSION/proto_major field")
+	runCmd.Flags().UintVar(&writerCfg.VersionProtoMinor, "version-proto-minor", gpsd.DefaultVersionProtoMinor, "VERSION/proto_minor field")
+	runCmd.Flags().StringVar(&writerCfg.DevicePath, "device-path", gpsd.DefaultVersionDevicePath, "DEVICES/devices/path field")
+	runCmd.Flags().StringVar(&writerCfg.DeviceDriver, "device-driver", gpsd.DefaultDeviceDriver, "DEVICES/devices/driver field")
+	runCmd.Flags().StringVar(&writerCfg.DeviceActivated, "device-activated", gpsd.DefaultDeviceActivated, "DEVICES/devices/activated field")
+	runCmd.Flags().UintVar(&writerCfg.DeviceBps, "device-bps", gpsd.DefaultDeviceBps, "DEVICES/devices/bps field")
+	runCmd.Flags().StringVar(&writerCfg.DeviceParity, "device-parity", gpsd.DefaultDeviceParity, "DEVICES/devices/parity field")
+	runCmd.Flags().UintVar(&writerCfg.DeviceStopBits, "device-stop-bits", gpsd.DefaultDeviceStopBits, "DEVICES/devices/stopbits field")
+	runCmd.Flags().UintVar(&writerCfg.TpvMode, "tpv-mode", gpsd.DefaultTpvMode, "TPV/mode field")
 
-	rootCmd.Flags().SortFlags = false
-	return rootCmd
+	runCmd.Flags().SortFlags = false
+	return runCmd
 }
 
-func runApp(currentVersionString string, mainCfg *mainConfig, writerCfg gpsd.WriterConfig) error {
+func executeRunCommand(currentVersionString string, mainCfg *mainConfig, writerCfg gpsd.WriterConfig) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	_ = ctx
@@ -86,6 +85,7 @@ func runApp(currentVersionString string, mainCfg *mainConfig, writerCfg gpsd.Wri
 	go version.CheckForUpdate(ctx, log, currentVersion)
 
 	routeCtrl := route.NewController(ctx, time.Second, log)
+	routeCtrl.Startup()
 	defer routeCtrl.Shutdown()
 
 	// start gpsd simulator server

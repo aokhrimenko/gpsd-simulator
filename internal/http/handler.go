@@ -217,7 +217,7 @@ func (s *Server) runHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) stopHandler(w http.ResponseWriter, _ *http.Request) {
-	s.routeCtrl.UpdateRoute("", 0, 0, []route.Point{})
+	s.routeCtrl.UpdateRoute("", 0, []route.Point{})
 	s.sseBroadcast(sseMessageTypeRouteDeleted)
 	w.WriteHeader(http.StatusAccepted)
 }
@@ -231,7 +231,7 @@ func (s *Server) saveRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	points := request.ToPoints()
 	s.log.Infof("HTTP: Saving route Name=%s, Distance=%.2f, MaxSpeed=%d, Points=%d", request.Name, request.Distance, request.MaxSpeed, len(points))
-	s.routeCtrl.UpdateRoute(request.Name, request.Distance, request.MaxSpeed, points)
+	s.routeCtrl.UpdateRoute(request.Name, request.MaxSpeed, points)
 	s.sseBroadcast(sseMessageTypeInitialRoute)
 	w.WriteHeader(http.StatusCreated)
 }

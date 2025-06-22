@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +32,10 @@ const (
 	Running
 )
 
+type LatLon struct {
+	Lat, Lon float64
+}
+
 type Point struct {
 	Lat       float64 `json:"lat"`
 	Lon       float64 `json:"lon"`
@@ -52,6 +58,29 @@ type Route struct {
 
 func (r *Route) String() string {
 	return fmt.Sprintf("Route with %d points from %f,%f to %f,%f is currently %s", len(r.Points), r.Points[0].Lat, r.Points[0].Lon, r.Points[len(r.Points)-1].Lat, r.Points[len(r.Points)-1].Lon, r.State)
+}
+
+type GeoJsonFile struct {
+	Geometry GeoJsonGeometry `json:"geometry"`
+}
+
+type GeoJsonGeometry struct {
+	Type        string      `json:"type"`
+	Coordinates [][]float64 `json:"coordinates"`
+}
+
+func (g GeoJsonFile) Points() []Point {
+	points := make([]Point, 0, len(g.Geometry.Coordinates))
+	for _, coord := range g.Geometry.Coordinates {
+		if len(coord) < 2 {
+			continue // Skip invalid coordinates
+		}
+		points = append(points, Point{
+			Lat: coord[1],
+			Lon: coord[0],
+		})
+	}
+	return points
 }
 
 type Controller struct {
@@ -80,59 +109,63 @@ func NewController(parentCtx context.Context, stepDelay time.Duration, log logge
 	}
 
 	c.ctx, c.cancelFunc = context.WithCancel(parentCtx)
-	go c.loop()
 	return c
 }
 
-func (c *Controller) UpdateRoute(name string, distance float64, maxSpeed uint, points []Point) {
-	c.stopTheLoop <- struct{}{}
+func (c *Controller) Startup() {
+	go c.loop()
+}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func (c *Controller) CreateRoute(name string, maxSpeed uint, points []Point) Route {
+	route := Route{
+		Name:     name,
+		MaxSpeed: maxSpeed,
+		Points:   make([]Point, 0, len(points)),
+	}
 
-	c.route.Name = name
-	c.route.Distance = distance
-	c.route.MaxSpeed = maxSpeed
 	maxPointsDistance := float64(0)
 	if maxSpeed > 0 {
 		maxSpeedMs := float64(maxSpeed) / 3.6
 		maxPointsDistance = maxSpeedMs * c.stepDelay.Seconds()
 	}
 
-	c.route.Points = make([]Point, 0, len(points))
+	distances := make(map[LatLon]float64, len(points))
+
 	for i, point := range points {
 		var speed float64
 		var track float64
 
 		if i > 0 {
-			prevIndex := len(c.route.Points) - 1
+			prevIndex := len(route.Points) - 1
 			// Skip the same point
-			if c.route.Points[prevIndex].Lat == point.Lat && c.route.Points[prevIndex].Lon == point.Lon {
+			if route.Points[prevIndex].Lat == point.Lat && route.Points[prevIndex].Lon == point.Lon {
 				continue
 			}
-			speed = calculateSpeedMetersPerSecond(c.route.Points[prevIndex].Lat, c.route.Points[prevIndex].Lon, point.Lat, point.Lon, c.stepDelay)
-			track = calculateInitialBearing(c.route.Points[prevIndex].Lat, c.route.Points[prevIndex].Lon, point.Lat, point.Lon)
-
+			speed = calculateSpeedMetersPerSecond(route.Points[prevIndex].Lat, route.Points[prevIndex].Lon, point.Lat, point.Lon, c.stepDelay)
+			track = calculateInitialBearing(route.Points[prevIndex].Lat, route.Points[prevIndex].Lon, point.Lat, point.Lon)
+			pointsDistance := calculateHaversineDistance(route.Points[prevIndex].Lat, route.Points[prevIndex].Lon, point.Lat, point.Lon)
+			distances[LatLon{Lat: point.Lat, Lon: point.Lon}] = pointsDistance
+			route.Distance += pointsDistance
 		}
 
-		c.route.Points = append(c.route.Points, Point{Lat: point.Lat, Lon: point.Lon, Speed: speed, Track: track})
+		route.Points = append(route.Points, Point{Lat: point.Lat, Lon: point.Lon, Speed: speed, Track: track})
 	}
 
-	if err := c.updateRouteElevations(c.route); err != nil {
+	if err := c.updateRouteElevations(&route); err != nil {
 		c.log.Error("Route: error updating route elevations: ", err)
 	}
 
 	// Tune route points not to reach the maximum speed
-	if len(c.route.Points) > 2 && maxPointsDistance > 0 {
-		newPoints := make([]Point, 0, len(c.route.Points))
+	if len(route.Points) > 2 && maxPointsDistance > 0 {
+		newPoints := make([]Point, 0, len(route.Points))
 
-		for i, point := range c.route.Points {
+		for i, point := range route.Points {
 			if i == 0 {
 				newPoints = append(newPoints, point)
 				continue
 			}
 			prevIndex := len(newPoints) - 1
-			pointsDistance := calculateHaversineDistance(newPoints[prevIndex].Lat, newPoints[prevIndex].Lon, point.Lat, point.Lon)
+			pointsDistance := distances[LatLon{Lat: point.Lat, Lon: point.Lon}]
 
 			if pointsDistance <= maxPointsDistance {
 				newPoints = append(newPoints, point)
@@ -175,11 +208,23 @@ func (c *Controller) UpdateRoute(name string, distance float64, maxSpeed uint, p
 			}
 		}
 
-		if len(newPoints) > len(c.route.Points) {
-			c.route.Points = newPoints
+		if len(newPoints) > len(route.Points) {
+			route.Points = newPoints
 		}
 	}
 
+	return route
+}
+
+func (c *Controller) UpdateRoute(name string, maxSpeed uint, points []Point) {
+	newRoute := c.CreateRoute(name, maxSpeed, points)
+
+	c.stopTheLoop <- struct{}{}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.route = &newRoute
 	if len(c.route.Points) > 0 {
 		c.route.State = Running
 	} else {
@@ -289,6 +334,60 @@ func (c *Controller) LoadRouteFromFile(filePath string) error {
 		return fmt.Errorf("JSON decode failed: %w", err)
 	}
 	c.SetRoute(route)
+
+	return nil
+}
+
+func (c *Controller) Import(name, inputFile, outputFile string, speed uint) error {
+	fmt.Printf("name: %s, input: %s, output: %s, speed: %d\n", name, inputFile, outputFile, speed)
+	input, err := os.OpenFile(inputFile, os.O_RDONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open input file %s: %w", inputFile, err)
+	}
+	defer input.Close()
+
+	inputData := GeoJsonFile{}
+	if err = json.NewDecoder(input).Decode(&inputData); err != nil {
+		return fmt.Errorf("failed to decode input file %s: %w", inputFile, err)
+	}
+
+	if name == "" {
+		name = fmt.Sprintf("Route %s", time.Now().Format(time.DateTime))
+	}
+
+	route := c.CreateRoute(name, speed, inputData.Points())
+
+	if outputFile == "" {
+		dir := filepath.Dir(inputFile)
+		buf := strings.Builder{}
+		buf.WriteString(name)
+		buf.WriteString("-")
+		if route.Distance > 10000 {
+			buf.WriteString(fmt.Sprintf("%.2fkm", route.Distance/1000))
+		} else {
+			buf.WriteString(fmt.Sprintf("%.0fm", route.Distance))
+		}
+
+		if route.MaxSpeed > 0 {
+			buf.WriteString(fmt.Sprintf("-%dkmh", route.MaxSpeed))
+		}
+		buf.WriteString(".json")
+		outputFile = filepath.Join(dir, buf.String())
+	}
+
+	c.log.Infof("Writing route to %s", outputFile)
+
+	output, err := os.OpenFile(outputFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open output file %s: %w", outputFile, err)
+	}
+	defer output.Close()
+
+	enc := json.NewEncoder(output)
+	enc.SetEscapeHTML(false)
+	if err = enc.Encode(route); err != nil {
+		return fmt.Errorf("failed to encode route to output file %s: %w", outputFile, err)
+	}
 
 	return nil
 }
